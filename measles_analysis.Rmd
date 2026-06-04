@@ -1,0 +1,260 @@
+---
+title: "Analysis of Measles Cases Over Time in Relation to Vaccination"
+subtitle: "Data Visualization (LSI-M-2, SS22) — Project Part 1 (R)"
+author: "Shraddha Karambelkar & Shefali Badre"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.width = 9, fig.height = 5
+)
+```
+
+```{r logo, echo=FALSE, out.width="180px"}
+# Optional THD logo: place the image at figures/thd-logo.jpg.
+# Guarded with file.exists() so the report still knits if the logo is absent
+# (the original hard-coded an absolute C:/Users/... path, which broke on any
+# other machine).
+if (file.exists("figures/thd-logo.jpg")) {
+  knitr::include_graphics("figures/thd-logo.jpg")
+}
+```
+
+## Background
+
+Measles is a highly contagious viral disease. Before a vaccine became
+available in the United States in 1963, it caused on the order of hundreds of
+thousands of reported cases per year, with epidemics every two to three years.
+This report uses the **Project Tycho** weekly U.S. notifiable-disease
+surveillance dataset to (1) describe how measles incidence changed over time
+and across states, and (2) examine its relationship to childhood measles
+immunization coverage.
+
+> **Data source.** Project Tycho, University of Pittsburgh —
+> <https://www.tycho.pitt.edu>. The file
+> `data/ProjectTycho_Level2_v1.1.0.csv` is **not** committed to this
+> repository (see `data/README.md` for how to obtain it). All paths below are
+> relative to this `.Rmd`, so the analysis runs on any machine once the file
+> is in place.
+
+```{r libraries}
+library(tidyverse)   # dplyr, ggplot2, readr, tidyr, ...
+library(lubridate)   # date parsing
+library(usmap)       # plot_usmap(), fips()
+library(patchwork)   # combining ggplots
+library(modelr)      # add_predictions(), add_residuals(), data_grid()
+```
+
+## Loading and preparing the data
+
+We read the full surveillance table, then keep only measles records, parse the
+date columns, and sort chronologically. Instead of printing the entire data
+frame after every step (which bloated the original notebook to several MB), we
+use `glimpse()` for a compact overview.
+
+```{r load-data}
+data_tycho <- read_csv("data/ProjectTycho_Level2_v1.1.0.csv")
+glimpse(data_tycho)
+```
+
+```{r prepare-measles}
+us_measles <- data_tycho %>%
+  filter(disease == "MEASLES") %>%
+  mutate(
+    from_date = ymd(from_date),
+    to_date   = ymd(to_date)
+  ) %>%
+  arrange(from_date)
+
+glimpse(us_measles)
+```
+
+## Geographic distribution: cases per state
+
+We aggregate total reported cases by state and join the FIPS codes that
+`usmap` needs to draw the choropleth.
+
+```{r cases-per-state}
+cases_per_state <- us_measles %>%
+  group_by(state) %>%
+  summarize(cases = sum(number, na.rm = TRUE), .groups = "drop") %>%
+  mutate(fips = as.numeric(fips(state))) %>%
+  filter(!is.na(fips)) %>%
+  mutate(values = cases)   # `values` is the column plot_usmap() expects
+
+head(cases_per_state, 10)
+```
+
+```{r map, fig.height=5}
+plot_usmap(data = cases_per_state, values = "values") +
+  scale_fill_continuous(
+    low = "#ebf059", high = "#f05959",
+    name = "Cases", label = scales::comma
+  ) +
+  labs(title = "Total reported measles cases per state") +
+  theme(legend.position = "right")
+```
+
+A handful of large, populous states (e.g. New York, California, Texas)
+dominate the cumulative counts, which is expected for a population-driven
+infectious disease.
+
+```{r bar-state, fig.height=6}
+cases_per_state %>%
+  ggplot(aes(x = reorder(state, -cases), y = cases)) +
+  geom_col(fill = "#4682B4") +                       # single colour: the
+  labs(                                              # original mapped fill to
+    title = "Total measles cases by state",          # `state`, producing a
+    x = "State", y = "Cases"                         # 50-key legend that
+  ) +                                                # carried no information
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+## Trend over time: cases per year
+
+```{r cases-per-year}
+cases_per_year <- us_measles %>%
+  group_by(year = year(from_date)) %>%
+  summarize(cases = sum(number, na.rm = TRUE), .groups = "drop")
+
+tail(cases_per_year, 10)
+```
+
+```{r year-bar}
+ggplot(cases_per_year, aes(x = year, y = cases)) +
+  geom_col(fill = "#4682B4") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Reported measles cases per year",
+       x = "Year", y = "Cases")
+```
+
+The single most informative view of the vaccine's impact is the full annual
+time series with the 1963 licensing date marked. Cases fall steeply within a
+few years of vaccine introduction.
+
+```{r full-timeline}
+ggplot(cases_per_year, aes(x = year, y = cases)) +
+  geom_line(color = "#08519c") +
+  geom_vline(xintercept = 1963, linetype = "dashed", color = "#d62728") +
+  annotate(
+    "text", x = 1963, y = max(cases_per_year$cases, na.rm = TRUE),
+    label = " Vaccine licensed (1963)", hjust = 0, color = "#d62728"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "U.S. measles cases per year, with vaccine introduction",
+       x = "Year", y = "Reported cases")
+```
+
+## Immunization coverage, 1981–2001
+
+> **Provenance note.** The immunization-coverage figures below (percentage of
+> children immunized against measles) were transcribed manually. Replace the
+> placeholder with the exact citation — e.g. World Bank / WHO–UNICEF estimates
+> — and ideally read them from a CSV in `data/` so the numbers are auditable
+> rather than hard-coded. The original notebook also loaded a World Bank
+> coverage spreadsheet via an intermediate `write.csv()` / `read.csv()` step
+> that wrote one filename and read another; that detour is removed here in
+> favour of this single explicit table.
+
+```{r vaccination-rate}
+vaccination_rate <- tribble(
+  ~year, ~immunization_rate,
+  1981, 97, 1982, 97, 1983, 98, 1984, 98, 1985, 97,
+  1986, 97, 1987, 82, 1988, 98, 1989, 94, 1990, 90,
+  1991, 87, 1992, 83, 1993, 84, 1994, 89, 1995, 88,
+  1996, 91, 1997, 91, 1998, 92, 1999, 92, 2000, 91, 2001, 91
+)
+
+vaccination_rate
+```
+
+```{r cases-vs-coverage}
+cases_recent <- cases_per_year %>%
+  filter(year >= 1981, year <= 2001)
+
+p_cases <- ggplot(cases_recent, aes(year, cases)) +
+  geom_area(fill = "#9ecae1") +
+  geom_line(color = "#08519c") +
+  scale_y_continuous(labels = scales::comma) +
+  labs(title = "Measles cases, 1981–2001", x = "Year", y = "Cases")
+
+p_vacc <- ggplot(vaccination_rate, aes(year, immunization_rate)) +
+  geom_area(fill = "#a1d99b") +
+  geom_line(color = "#006d2c") +
+  labs(title = "Measles immunization rate, 1981–2001",
+       x = "Year", y = "Immunization rate (%)")
+
+p_cases / p_vacc + plot_layout(heights = c(3, 1))
+```
+
+## Relationship between coverage and cases
+
+We join the two series **by year** so that each case count is matched to the
+coverage value for the same year. (The original code built two separately
+filtered vectors and correlated them positionally, which only gives the right
+answer if the two filters happen to produce identically ordered, equal-length
+vectors — a fragile assumption.)
+
+```{r aligned}
+aligned <- cases_per_year %>%
+  inner_join(vaccination_rate, by = "year")
+
+aligned
+```
+
+```{r correlation}
+cor.test(aligned$cases, aligned$immunization_rate)
+```
+
+```{r linear-model}
+model <- lm(cases ~ immunization_rate, data = aligned)
+summary(model)
+```
+
+```{r model-fit}
+grid <- aligned %>%
+  data_grid(immunization_rate) %>%
+  add_predictions(model)
+
+ggplot(aligned, aes(immunization_rate, cases)) +
+  geom_point() +
+  geom_line(aes(y = pred), data = grid, color = "red", linewidth = 1) +
+  scale_y_continuous(labels = scales::comma) +
+  labs(x = "Immunization rate (%)", y = "Cases",
+       title = "Cases vs. immunization rate (1981–2001)")
+```
+
+```{r residuals}
+aligned %>%
+  add_residuals(model) %>%
+  ggplot(aes(resid)) +
+  geom_freqpoly(bins = 10) +
+  labs(title = "Model residuals", x = "Residual", y = "Count")
+```
+
+> **Statistical caveat.** Restricting this analysis to 1981–2001 keeps every
+> observation within the vaccination era, which is deliberate. If you instead
+> regress cases on coverage across the *whole* record — mixing pre-vaccine
+> years (0% coverage, very high case counts) with post-vaccine years (high
+> coverage, low counts) — you get a very strong negative correlation, but that
+> number is largely an artefact of the era split (a time confound), not
+> evidence of a clean dose–response relationship. The honest evidence for the
+> vaccine's effect is the abrupt drop visible in the full annual time series
+> above, not a single correlation coefficient.
+
+## Conclusion
+
+The data tell a clear public-health story: U.S. measles incidence collapsed in
+the years following the 1963 introduction of the vaccine, and remained low
+while immunization coverage stayed high. The vaccine has prevented an enormous
+number of cases. The corollary is that sustained high coverage matters — if
+vaccination rates fall (for example in the aftermath of pandemic disruption),
+the same data give good reason to expect measles to resurge.

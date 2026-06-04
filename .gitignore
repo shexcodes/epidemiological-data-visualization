@@ -1,31 +1,3 @@
-# ---- Data (course-provided / large / externally licensed: do not commit) ----
-**/data/*
-!**/data/README.md
-!**/data/.gitignore
-
-# ---- Generated figures (re-created by running the notebooks) ----
-**/figures/*
-!**/figures/.gitkeep
-
-# ---- Python ----
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-env/
-.ipynb_checkpoints/
-
-# ---- R ----
-.Rproj.user/
-.Rhistory
-.RData
-.Ruserdata
-*_cache/
-*_files/
-*.Rproj
-
-# ---- OS / editor ----
-.DS_Store
-Thumbs.db
-.idea/
-.vscode/
+*
+!.gitignore
+!README.md
