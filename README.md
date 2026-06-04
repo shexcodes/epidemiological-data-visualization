@@ -105,7 +105,7 @@ To show them on this page, export the ones you want and embed them, e.g.:
 
 ## Authors
 
-Shraddha Karambelkar · Shefali Badre — M.Sc. Life Science Informatics, DIT.
+Shefali Badre — M.Sc. Life Science Informatics, DIT.
 
 ## License
 
