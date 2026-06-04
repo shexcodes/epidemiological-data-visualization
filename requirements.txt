@@ -1,0 +1,6 @@
+# Python dependencies for python-data-visualization/
+# Install with:  pip install -r requirements.txt
+pandas>=1.5
+numpy>=1.23
+matplotlib>=3.6
+jupyter>=1.0
