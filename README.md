@@ -8,10 +8,10 @@ Coursework for **Data Visualization (LSI-M-2, SS22)** in the M.Sc. Life Science
 Informatics programme at the Deggendorf Institute of Technology. The repository
 contains two self-contained projects:
 
-- **[`r-measles-analysis/`](r-measles-analysis/)** — an R / `ggplot2` analysis
+- **[`r-measles-analysis/`]** — an R / `ggplot2` analysis
   of U.S. measles incidence over time and its relationship to vaccination,
   using the [Project Tycho](https://www.tycho.pitt.edu) surveillance dataset.
-- **[`python-data-visualization/`](python-data-visualization/)** — Python
+- **[`python-data-visualization/`]** — Python
   (`matplotlib`) recreations of several figures from artificial genomics data
   (RNA-binding-protein signals, annotation tracks, and positional k-mer counts).
 
